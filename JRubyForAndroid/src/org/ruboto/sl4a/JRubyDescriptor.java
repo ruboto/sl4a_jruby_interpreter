@@ -43,7 +43,7 @@ public class JRubyDescriptor implements InterpreterDescriptor {
   private static final String JRUBY_JAR = "jruby.jar";
   private static final String ENV_DATA = "ANDROID_DATA";
 
-  public static final String BASE_INSTALL_URL = "https://github.com/ruboto/sl4a_jruby_interpreter/raw/master/current/";
+  public static final String BASE_INSTALL_URL = "https://github.com/ruboto/sl4a_jruby_interpreter/raw/master/jruby-version-builder/current/";
   public static final String DALVIKVM = "/system/bin/dalvikvm";
 
   public String getExtension() {
