@@ -1,0 +1,7 @@
+This directory contains resources related to building a new version of JRuby for SL4A.
+
+json/ contains the JSON implementation for Ruby http://json.rubyforge.org/
+android.rb comes from the Scripting Language For Android (AL4A) project
+
+The latest JRuby version will be pulled from the jruby-jars gem
+

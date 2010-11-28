@@ -1,0 +1,111 @@
+require 'net/http'
+require 'rake/clean'
+require 'rubygems'
+require 'jruby-jars'
+
+JRUBY_GEM_VERSION = JRubyJars::core_jar_path.split('/')[-1][11..-5]
+JRUBY_CURRENT_VERSION = File.exists?("current/VERSION.txt") ? File.read("current/VERSION.txt") : "none"
+
+CLEAN.include('jruby', 'working', 'current')
+
+task :default => :build_from_gem
+
+directory "current"
+directory "working/tmp"
+directory "jruby"
+
+###########################################################################
+#
+# Copy latest JRuby from jruby-jars gem
+#
+
+file "working/tmp/jruby.jar" => ["working/tmp"] do
+  abort("Current version and gem version are the same (#{JRUBY_GEM_VERSION}). 'gem update jruby-jars' or 'rake clean'") if 
+    JRUBY_GEM_VERSION == JRUBY_CURRENT_VERSION
+
+  log_action("Copying #{JRubyJars::core_jar_path}") {FileUtils.copy JRubyJars::core_jar_path, "working/tmp/jruby.jar"}
+  log_action("Copying #{JRubyJars::stdlib_jar_path}") {FileUtils.copy JRubyJars::stdlib_jar_path, "working/tmp/stdlib.jar"}
+end
+
+###########################################################################
+#
+# Combine, add sl4a files, remove extra files
+#
+
+file "working/jruby.jar" => ["working/tmp/jruby.jar"] do
+  log_action("Inflating jars") do
+    Dir.chdir "working/tmp"
+    `jar -xf jruby.jar`
+    File.delete "jruby.jar"
+    `jar -xf stdlib.jar`
+    File.delete "stdlib.jar"
+  end
+
+  log_action("Adding android.rb and json") do
+    FileUtils.cp_r "../../json", "META-INF/jruby.home/lib/ruby/1.8"
+    FileUtils.copy "../../android.rb", "META-INF/jruby.home/lib/ruby/1.8"
+  end
+
+  log_action("Removing unneeded files") do
+    ['jni', 'org/jruby/ant', 'org/jruby/compiler/ir', 'org/jruby/demo', 'org/jruby/embed/bsf', 
+     'org/jruby/embed/jsr223', 'org/jruby/ext/ffi','org/jruby/javasupport/bsf',
+     'META-INF/jruby.home/bin', 'META-INF/maven', 'META-INF/services', 
+     'META-INF/jruby.home/lib/ruby/gems', 'META-INF/jruby.home/lib/ruby/site_ruby'
+    ].each {|i| FileUtils.remove_dir i, true}
+  end
+
+  log_action("Building new jar") {`jar -cf ../jruby.jar *`}
+  Dir.chdir "../.."
+end
+
+###########################################################################
+#
+# Dex and zipalign
+#
+
+file "jruby/jruby.jar" => ["jruby", "working/jruby.jar"] do
+  Dir.chdir "working"
+  log_action("Dexing") {`dx -JXms1024m -JXmx1024m --dex --output=jruby-dex.jar jruby.jar`}
+  log_action("Zip aligning") {`zipalign 4 jruby-dex.jar jruby.zip`}
+  Dir.chdir ".."
+  FileUtils.copy "working/jruby.zip", "jruby/jruby.jar"
+end
+
+###########################################################################
+#
+# Build archives
+#
+
+file "current/jruby_extras.zip" => ["current", "jruby/jruby.jar"] do
+  log_action("Creating zip of jruby") {`zip -r current/jruby_extras.zip jruby/`}
+end
+
+file "current/jruby_scripts.zip" => ["current", "ase/scripts"] do
+  log_action("Creating zip of scripts") {`zip -j current/jruby_scripts.zip ase/scripts/*`}
+end
+
+###########################################################################
+#
+# Build and remove working file
+#
+
+task :build_from_gem => ["current/jruby_extras.zip", "current/jruby_scripts.zip"] do
+  File.open("current/VERSION.txt", "w") {|f| f << JRUBY_GEM_VERSION}
+  log_action("Remove working files and directories") do
+    FileUtils.remove_dir "jruby"
+    FileUtils.remove_dir "working"
+  end
+end
+
+###########################################################################
+#
+# log_action: put text to stdout around the execution of a block
+#
+
+def log_action(initial_text, final_text="Done.", &block)
+  $stdout.sync = true
+  print initial_text, "..."
+  yield
+  puts final_text
+end
+
